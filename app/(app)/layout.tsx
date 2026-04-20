@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import Sidebar from '@/components/sidebar'
 import { ToastProvider } from '@/components/toast'
 
@@ -33,20 +34,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <ToastProvider>
       <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-        <Sidebar
-          user={{
-            id: user.id,
-            name: profile?.name ?? user.email ?? 'User',
-            email: user.email ?? '',
-            role: profile?.role ?? 'member',
-            avatarColor: profile?.avatar_color ?? '#E85D26',
-          }}
-          counts={{
-            open: openCount ?? 0,
-            inProgress: inProgressCount ?? 0,
-            pending: pendingCount ?? 0,
-          }}
-        />
+        <Suspense fallback={<div style={{ width: 168, flexShrink: 0, background: '#0C447C' }} />}>
+          <Sidebar
+            user={{
+              id: user.id,
+              name: profile?.name ?? user.email ?? 'User',
+              email: user.email ?? '',
+              role: profile?.role ?? 'member',
+              avatarColor: profile?.avatar_color ?? '#E85D26',
+            }}
+            counts={{
+              open: openCount ?? 0,
+              inProgress: inProgressCount ?? 0,
+              pending: pendingCount ?? 0,
+            }}
+          />
+        </Suspense>
         <main
           style={{
             flex: 1,
