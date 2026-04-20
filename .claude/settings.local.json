@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 33984 -Force\")",
+      "Bash(powershell.exe *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
