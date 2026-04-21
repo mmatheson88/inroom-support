@@ -60,6 +60,7 @@ Priority: critical=complete outage affecting all TVs or entire facility, high=ma
 
 export async function scanUserInbox(userId: string, deepScan = false) {
   const supabase = createServiceClient()
+  console.log(`[scan] starting scan for user=${userId} deepScan=${deepScan}`)
 
   const { data: user } = await supabase
     .from('users')
@@ -67,9 +68,13 @@ export async function scanUserInbox(userId: string, deepScan = false) {
     .eq('id', userId)
     .single()
 
-  if (!user?.gmail_access_token) return
+  if (!user?.gmail_access_token) {
+    console.log(`[scan] user=${userId} has no gmail_access_token — skipping`)
+    return
+  }
 
   const { data: settings } = await supabase.from('scan_settings').select('*').single()
+  console.log(`[scan] settings: auto_create=${settings?.auto_create} frequency=${settings?.frequency_minutes}min`)
 
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -91,6 +96,7 @@ export async function scanUserInbox(userId: string, deepScan = false) {
       : new Date(Date.now() - 24 * 60 * 60 * 1000)
 
   const query = `after:${Math.floor(sinceDate.getTime() / 1000)} -from:me`
+  console.log(`[scan] gmail query: "${query}" (since ${sinceDate.toISOString()})`)
 
   const listRes = await gmail.users.messages.list({
     userId: 'me',
@@ -99,6 +105,12 @@ export async function scanUserInbox(userId: string, deepScan = false) {
   })
 
   const messages = listRes.data.messages ?? []
+  console.log(`[scan] fetched ${messages.length} messages from Gmail`)
+
+  let skippedAlreadyScanned = 0
+  let skippedNotIssue = 0
+  let addedToQueue = 0
+  let ticketsCreated = 0
 
   for (const msg of messages) {
     if (!msg.id) continue
@@ -109,12 +121,17 @@ export async function scanUserInbox(userId: string, deepScan = false) {
       .eq('gmail_message_id', msg.id)
       .single()
 
-    if (existing) continue
+    if (existing) {
+      skippedAlreadyScanned++
+      continue
+    }
 
     const msgData = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' })
     const headers = msgData.data.payload?.headers ?? []
     const subject = headers.find(h => h.name === 'Subject')?.value ?? '(no subject)'
     const from = headers.find(h => h.name === 'From')?.value ?? ''
+
+    console.log(`[scan] processing message id=${msg.id} from="${from}" subject="${subject}"`)
 
     const parts = msgData.data.payload?.parts ?? []
     let body = ''
@@ -122,8 +139,10 @@ export async function scanUserInbox(userId: string, deepScan = false) {
     if (textPart?.body?.data) {
       body = Buffer.from(textPart.body.data, 'base64').toString('utf8')
     }
+    console.log(`[scan] body length=${body.length} chars`)
 
     const analysis = await analyzeEmail(subject, body, from)
+    console.log(`[scan] claude response: isIssue=${analysis.isIssue} confidence=${analysis.confidence} type=${analysis.issueType} priority=${analysis.priority} title="${analysis.title}"`)
 
     const scanRecord = {
       user_id: userId,
@@ -136,7 +155,9 @@ export async function scanUserInbox(userId: string, deepScan = false) {
     }
 
     if (!analysis.isIssue || analysis.confidence < 0.3) {
+      console.log(`[scan] SKIP — isIssue=${analysis.isIssue} confidence=${analysis.confidence} (below 0.3 threshold)`)
       await supabase.from('email_scans').insert(scanRecord)
+      skippedNotIssue++
       continue
     }
 
@@ -151,8 +172,13 @@ export async function scanUserInbox(userId: string, deepScan = false) {
         .in('status', ['open', 'in_progress'])
         .single()
 
-      if (!duplicate && settings?.auto_create) {
-        const { data: ticket } = await supabase
+      if (duplicate) {
+        console.log(`[scan] QUEUE — confidence=${analysis.confidence} >= 0.75 but duplicate ticket exists (id=${duplicate.id})`)
+      } else if (!settings?.auto_create) {
+        console.log(`[scan] QUEUE — confidence=${analysis.confidence} >= 0.75 but auto_create is disabled`)
+      } else {
+        console.log(`[scan] AUTO-CREATE ticket — confidence=${analysis.confidence} facility="${analysis.facility}"`)
+        const { data: ticket, error: ticketError } = await supabase
           .from('tickets')
           .insert({
             title: analysis.title,
@@ -171,16 +197,25 @@ export async function scanUserInbox(userId: string, deepScan = false) {
           .select()
           .single()
 
+        if (ticketError) {
+          console.log(`[scan] ticket insert error: ${ticketError.message}`)
+        }
+
         if (ticket) {
+          console.log(`[scan] ticket created id=${ticket.id}`)
           scanRecord.ticket_created = true
           scanRecord.ticket_id = ticket.id
           await supabase.from('email_scans').insert(scanRecord)
           await supabase.from('users').update({ last_scan_at: new Date().toISOString() }).eq('id', userId)
+          ticketsCreated++
           continue
         }
       }
+    } else {
+      console.log(`[scan] QUEUE — confidence=${analysis.confidence} is between 0.3 and 0.75`)
     }
 
+    console.log(`[scan] adding to review_queue`)
     await supabase.from('review_queue').insert({
       user_id: userId,
       gmail_message_id: msg.id,
@@ -196,7 +231,9 @@ export async function scanUserInbox(userId: string, deepScan = false) {
     })
 
     await supabase.from('email_scans').insert(scanRecord)
+    addedToQueue++
   }
 
   await supabase.from('users').update({ last_scan_at: new Date().toISOString() }).eq('id', userId)
+  console.log(`[scan] done — total=${messages.length} alreadyScanned=${skippedAlreadyScanned} notIssue=${skippedNotIssue} queue=${addedToQueue} tickets=${ticketsCreated}`)
 }
