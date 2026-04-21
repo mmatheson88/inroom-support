@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { PriorityBadge, StatusBadge, TypeBadge } from '@/components/badge'
-import { daysOpen as daysOpenColor, formatDate, priority as priorityTokens, status as statusTokens } from '@/lib/tokens'
+import { daysOpen as daysOpenColor, formatDate, status as statusTokens } from '@/lib/tokens'
 import { useToast } from '@/components/toast'
 
 interface Ticket {
@@ -32,6 +32,7 @@ interface Note {
   user_name: string
   content: string
   created_at: string
+  parent_note_id: string | null
 }
 
 interface Attachment {
@@ -40,6 +41,7 @@ interface Attachment {
   file_name: string
   file_size: number
   file_type: string
+  description: string | null
   uploaded_by: string
   created_at: string
 }
@@ -98,13 +100,23 @@ export default function TicketDetail({
   const [activity, setActivity] = useState(initialActivity)
   const [noteText, setNoteText] = useState('')
   const [savingNote, setSavingNote] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [savingReply, setSavingReply] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
+  const [attachDescription, setAttachDescription] = useState('')
+  const [showAttachForm, setShowAttachForm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const days = getDaysOpen(ticket)
   const userMap = new Map(users.map(u => [u.id, u]))
+
+  // Build note tree: top-level notes with their replies
+  const topLevelNotes = notes.filter(n => !n.parent_note_id)
+  const repliesFor = (noteId: string) => notes.filter(n => n.parent_note_id === noteId)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
   async function updateField(field: string, value: string) {
     const res = await fetch(`/api/tickets/${ticket.id}`, {
@@ -120,19 +132,29 @@ export default function TicketDetail({
     }
   }
 
-  async function addNote() {
-    if (!noteText.trim()) return
-    setSavingNote(true)
+  async function submitNote(content: string, parentNoteId: string | null = null) {
+    if (!content.trim()) return
+    if (parentNoteId) setSavingReply(true)
+    else setSavingNote(true)
+
     const res = await fetch(`/api/tickets/${ticket.id}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: noteText, userId: currentUserId, userName: currentUserName }),
+      body: JSON.stringify({ content, userId: currentUserId, userName: currentUserName, parentNoteId }),
     })
-    setSavingNote(false)
+
+    if (parentNoteId) setSavingReply(false)
+    else setSavingNote(false)
+
     if (res.ok) {
       const { note } = await res.json()
       setNotes(prev => [...prev, note])
-      setNoteText('')
+      if (parentNoteId) {
+        setReplyingTo(null)
+        setReplyText('')
+      } else {
+        setNoteText('')
+      }
       toast('Note saved')
     }
   }
@@ -161,11 +183,14 @@ export default function TicketDetail({
     formData.append('file', file)
     formData.append('ticketId', ticket.id)
     formData.append('userId', currentUserId)
+    formData.append('description', attachDescription)
     const res = await fetch('/api/attachments', { method: 'POST', body: formData })
     setUploadingFile(false)
     if (res.ok) {
       const { attachment } = await res.json()
       setAttachments(prev => [attachment, ...prev])
+      setAttachDescription('')
+      setShowAttachForm(false)
       toast('File uploaded')
     } else {
       toast('Upload failed', 'error')
@@ -193,17 +218,10 @@ export default function TicketDetail({
         <button
           onClick={() => router.back()}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 11,
-            border: '0.5px solid var(--color-border-primary)',
-            borderRadius: 5,
-            padding: '4px 8px',
-            background: 'none',
-            cursor: 'pointer',
-            color: 'var(--color-text-secondary)',
-            flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
+            border: '0.5px solid var(--color-border-primary)', borderRadius: 5,
+            padding: '4px 8px', background: 'none', cursor: 'pointer',
+            color: 'var(--color-text-secondary)', flexShrink: 0,
           }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -218,14 +236,8 @@ export default function TicketDetail({
 
         <h1
           style={{
-            fontSize: 13,
-            fontWeight: 500,
-            flex: 1,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            margin: 0,
+            fontSize: 13, fontWeight: 500, flex: 1, minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0,
           }}
         >
           {ticket.title}
@@ -234,12 +246,8 @@ export default function TicketDetail({
         <span
           style={{
             background: daysColor === '#3B6D11' ? '#EAF3DE' : daysColor === '#BA7517' ? '#FAEEDA' : '#FCEBEB',
-            color: daysColor,
-            fontSize: 10,
-            padding: '2px 8px',
-            borderRadius: 4,
-            flexShrink: 0,
-            fontWeight: 500,
+            color: daysColor, fontSize: 10, padding: '2px 8px',
+            borderRadius: 4, flexShrink: 0, fontWeight: 500,
           }}
         >
           {days}d open
@@ -249,14 +257,9 @@ export default function TicketDetail({
           value={ticket.status}
           onChange={e => updateField('status', e.target.value)}
           style={{
-            fontSize: 11,
-            border: '0.5px solid var(--color-border-primary)',
-            borderRadius: 5,
-            padding: '4px 6px',
-            background: statusColors.bg,
-            color: statusColors.text,
-            flexShrink: 0,
-            cursor: 'pointer',
+            fontSize: 11, border: '0.5px solid var(--color-border-primary)', borderRadius: 5,
+            padding: '4px 6px', background: statusColors.bg, color: statusColors.text,
+            flexShrink: 0, cursor: 'pointer',
           }}
         >
           <option value="open">Open</option>
@@ -269,16 +272,9 @@ export default function TicketDetail({
             onClick={markResolved}
             disabled={resolving}
             style={{
-              background: '#639922',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 5,
-              fontSize: 11,
-              fontWeight: 500,
-              padding: '5px 12px',
-              cursor: resolving ? 'default' : 'pointer',
-              flexShrink: 0,
-              opacity: resolving ? 0.7 : 1,
+              background: '#639922', color: '#fff', border: 'none', borderRadius: 5,
+              fontSize: 11, fontWeight: 500, padding: '5px 12px',
+              cursor: resolving ? 'default' : 'pointer', flexShrink: 0, opacity: resolving ? 0.7 : 1,
             }}
           >
             {resolving ? 'Resolving...' : 'Mark Resolved'}
@@ -290,14 +286,9 @@ export default function TicketDetail({
             onClick={deleteTicket}
             disabled={deleting}
             style={{
-              background: 'none',
-              border: '0.5px solid var(--color-border-primary)',
-              borderRadius: 5,
-              fontSize: 11,
-              padding: '4px 10px',
-              cursor: deleting ? 'default' : 'pointer',
-              color: 'var(--color-text-secondary)',
-              flexShrink: 0,
+              background: 'none', border: '0.5px solid var(--color-border-primary)', borderRadius: 5,
+              fontSize: 11, padding: '4px 10px', cursor: deleting ? 'default' : 'pointer',
+              color: 'var(--color-text-secondary)', flexShrink: 0,
             }}
           >
             {deleting ? 'Deleting...' : 'Delete'}
@@ -312,11 +303,8 @@ export default function TicketDetail({
           {/* Issue card */}
           <div
             style={{
-              background: 'white',
-              border: '0.5px solid var(--color-border-primary)',
-              borderRadius: 8,
-              padding: '11px 13px',
-              marginBottom: 10,
+              background: 'white', border: '0.5px solid var(--color-border-primary)',
+              borderRadius: 8, padding: '11px 13px', marginBottom: 10,
             }}
           >
             <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-secondary)', marginBottom: 7 }}>
@@ -341,91 +329,108 @@ export default function TicketDetail({
           {/* Notes */}
           <div
             style={{
-              background: 'white',
-              border: '0.5px solid var(--color-border-primary)',
-              borderRadius: 8,
-              padding: '11px 13px',
-              marginBottom: 10,
+              background: 'white', border: '0.5px solid var(--color-border-primary)',
+              borderRadius: 8, padding: '11px 13px', marginBottom: 10,
             }}
           >
             <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-secondary)', marginBottom: 10 }}>
               Notes ({notes.length})
             </div>
 
-            {notes.length === 0 && (
+            {topLevelNotes.length === 0 && (
               <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>No notes yet.</div>
             )}
 
-            {notes.map(note => {
-              const author = userMap.get(note.user_id)
-              const initials = note.user_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+            {topLevelNotes.map(note => {
+              const replies = repliesFor(note.id)
               return (
-                <div key={note.id} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                  <div
-                    style={{
-                      width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                      background: author?.avatar_color ?? '#E85D26',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 9, color: '#fff', fontWeight: 600,
+                <div key={note.id} style={{ marginBottom: 12 }}>
+                  <NoteItem
+                    note={note}
+                    userMap={userMap}
+                    onReply={() => {
+                      setReplyingTo(replyingTo === note.id ? null : note.id)
+                      setReplyText('')
                     }}
-                  >
-                    {initials}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        background: 'var(--color-background-secondary)',
-                        borderRadius: '0 7px 7px 7px',
-                        padding: '7px 9px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                        <span style={{ fontSize: 11, fontWeight: 500 }}>{note.user_name}</span>
-                        <span style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>
-                          {formatDate(note.created_at)}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{note.content}</p>
+                    isReplying={replyingTo === note.id}
+                  />
+
+                  {/* Replies */}
+                  {replies.length > 0 && (
+                    <div style={{ marginLeft: 32, marginTop: 6, borderLeft: '2px solid var(--color-border-tertiary)', paddingLeft: 10 }}>
+                      {replies.map(reply => (
+                        <div key={reply.id} style={{ marginBottom: 8 }}>
+                          <NoteItem note={reply} userMap={userMap} isReply />
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
+
+                  {/* Reply input */}
+                  {replyingTo === note.id && (
+                    <div style={{ marginLeft: 32, marginTop: 6, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      <textarea
+                        value={replyText}
+                        onChange={e => setReplyText(e.target.value)}
+                        placeholder={`Reply to ${note.user_name}...`}
+                        autoFocus
+                        rows={2}
+                        style={{
+                          flex: 1, fontSize: 11, border: '0.5px solid var(--color-border-primary)',
+                          borderRadius: 5, padding: '6px 8px', resize: 'none', outline: 'none', lineHeight: 1.5,
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submitNote(replyText, note.id) }}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <button
+                          onClick={() => submitNote(replyText, note.id)}
+                          disabled={savingReply || !replyText.trim()}
+                          style={{
+                            background: '#0C447C', color: '#fff', border: 'none', borderRadius: 5,
+                            fontSize: 11, fontWeight: 500, padding: '5px 10px', cursor: savingReply || !replyText.trim() ? 'default' : 'pointer',
+                            opacity: savingReply || !replyText.trim() ? 0.6 : 1,
+                          }}
+                        >
+                          {savingReply ? '...' : 'Reply'}
+                        </button>
+                        <button
+                          onClick={() => { setReplyingTo(null); setReplyText('') }}
+                          style={{
+                            background: 'none', border: '0.5px solid var(--color-border-primary)',
+                            borderRadius: 5, fontSize: 11, padding: '5px 10px', cursor: 'pointer',
+                            color: 'var(--color-text-secondary)',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
 
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            {/* New note */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 4 }}>
               <textarea
                 value={noteText}
                 onChange={e => setNoteText(e.target.value)}
                 placeholder="Add a note..."
                 rows={2}
                 style={{
-                  flex: 1,
-                  fontSize: 11,
-                  border: '0.5px solid var(--color-border-primary)',
-                  borderRadius: 5,
-                  padding: '6px 8px',
-                  resize: 'none',
-                  outline: 'none',
-                  lineHeight: 1.5,
-                  height: 34,
+                  flex: 1, fontSize: 11, border: '0.5px solid var(--color-border-primary)',
+                  borderRadius: 5, padding: '6px 8px', resize: 'none', outline: 'none', lineHeight: 1.5, height: 34,
                 }}
-                onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) addNote() }}
+                onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submitNote(noteText) }}
               />
               <button
-                onClick={addNote}
+                onClick={() => submitNote(noteText)}
                 disabled={savingNote || !noteText.trim()}
                 style={{
-                  background: '#0C447C',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 5,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  padding: '6px 12px',
+                  background: '#0C447C', color: '#fff', border: 'none', borderRadius: 5,
+                  fontSize: 11, fontWeight: 500, padding: '6px 12px',
                   cursor: savingNote || !noteText.trim() ? 'default' : 'pointer',
-                  opacity: savingNote || !noteText.trim() ? 0.6 : 1,
-                  height: 34,
-                  flexShrink: 0,
+                  opacity: savingNote || !noteText.trim() ? 0.6 : 1, height: 34, flexShrink: 0,
                 }}
               >
                 {savingNote ? '...' : 'Add Note'}
@@ -436,10 +441,8 @@ export default function TicketDetail({
           {/* Attachments */}
           <div
             style={{
-              background: 'white',
-              border: '0.5px solid var(--color-border-primary)',
-              borderRadius: 8,
-              padding: '11px 13px',
+              background: 'white', border: '0.5px solid var(--color-border-primary)',
+              borderRadius: 8, padding: '11px 13px',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -447,28 +450,64 @@ export default function TicketDetail({
                 Attachments ({attachments.length})
               </div>
               <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingFile}
+                onClick={() => setShowAttachForm(v => !v)}
                 style={{
-                  fontSize: 11,
-                  border: '0.5px solid var(--color-border-primary)',
-                  borderRadius: 5,
-                  padding: '3px 8px',
-                  background: 'none',
-                  cursor: uploadingFile ? 'default' : 'pointer',
-                  color: 'var(--color-text-secondary)',
+                  fontSize: 11, border: '0.5px solid var(--color-border-primary)', borderRadius: 5,
+                  padding: '3px 8px', background: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)',
                 }}
               >
-                {uploadingFile ? 'Uploading...' : '+ Attach File'}
+                + Attach File
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".jpg,.jpeg,.png,.pdf,.mp4"
-                style={{ display: 'none' }}
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f) }}
-              />
             </div>
+
+            {showAttachForm && (
+              <div
+                style={{
+                  background: 'var(--color-background-secondary)', borderRadius: 6,
+                  padding: '10px 10px', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8,
+                }}
+              >
+                <input
+                  type="text"
+                  value={attachDescription}
+                  onChange={e => setAttachDescription(e.target.value)}
+                  placeholder="Description (optional)"
+                  style={{
+                    fontSize: 11, border: '0.5px solid var(--color-border-primary)', borderRadius: 5,
+                    padding: '5px 8px', outline: 'none', background: 'white',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile}
+                    style={{
+                      fontSize: 11, background: '#0C447C', color: '#fff', border: 'none',
+                      borderRadius: 5, padding: '5px 12px', cursor: uploadingFile ? 'default' : 'pointer',
+                      opacity: uploadingFile ? 0.7 : 1, fontWeight: 500,
+                    }}
+                  >
+                    {uploadingFile ? 'Uploading...' : 'Choose File'}
+                  </button>
+                  <button
+                    onClick={() => { setShowAttachForm(false); setAttachDescription('') }}
+                    style={{
+                      fontSize: 11, background: 'none', border: '0.5px solid var(--color-border-primary)',
+                      borderRadius: 5, padding: '5px 10px', cursor: 'pointer', color: 'var(--color-text-secondary)',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf,.mp4"
+                  style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f) }}
+                />
+              </div>
+            )}
 
             {attachments.length === 0 && (
               <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No attachments.</div>
@@ -478,30 +517,39 @@ export default function TicketDetail({
               <div
                 key={att.id}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 0',
+                  display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 0',
                   borderBottom: '0.5px solid var(--color-border-tertiary)',
-                  fontSize: 11,
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
                   <rect x="2" y="1" width="10" height="12" rx="1" stroke="var(--color-text-secondary)" strokeWidth="1" />
                   <path d="M4 5h6M4 7h6M4 9h4" stroke="var(--color-text-secondary)" strokeWidth="0.8" strokeLinecap="round" />
                 </svg>
-                <button
-                  onClick={async () => {
-                    const res = await fetch(`/api/attachments/${att.id}/url`)
-                    if (!res.ok) return
-                    const { url } = await res.json()
-                    window.open(url, '_blank', 'noopener,noreferrer')
-                  }}
-                  style={{ flex: 1, color: '#0C447C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, fontSize: 11 }}
-                >
-                  {att.file_name}
-                </button>
-                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>{formatFileSize(att.file_size)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button
+                    onClick={async () => {
+                      const res = await fetch(`/api/attachments/${att.id}/url`)
+                      if (!res.ok) return
+                      const { url } = await res.json()
+                      window.open(url, '_blank', 'noopener,noreferrer')
+                    }}
+                    style={{
+                      color: '#0C447C', background: 'none', border: 'none', cursor: 'pointer',
+                      textAlign: 'left', padding: 0, fontSize: 11, fontWeight: 500,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: '100%',
+                    }}
+                  >
+                    {att.file_name}
+                  </button>
+                  {att.description && (
+                    <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                      {att.description}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0, marginTop: 1 }}>
+                  {formatFileSize(att.file_size)}
+                </span>
               </div>
             ))}
           </div>
@@ -510,12 +558,8 @@ export default function TicketDetail({
         {/* Right Sidebar */}
         <div
           style={{
-            width: 205,
-            flexShrink: 0,
-            borderLeft: '0.5px solid var(--color-border-tertiary)',
-            background: 'white',
-            overflowY: 'auto',
-            padding: 12,
+            width: 205, flexShrink: 0, borderLeft: '0.5px solid var(--color-border-tertiary)',
+            background: 'white', overflowY: 'auto', padding: 12,
           }}
         >
           <SidebarField label="Facility">
@@ -604,12 +648,7 @@ export default function TicketDetail({
               </div>
               {activity.map(entry => (
                 <div key={entry.id} style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  <div
-                    style={{
-                      width: 6, height: 6, borderRadius: '50%', background: 'var(--color-border-secondary)',
-                      marginTop: 4, flexShrink: 0,
-                    }}
-                  />
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-border-secondary)', marginTop: 4, flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
                       <strong style={{ color: 'var(--color-text-primary)' }}>{entry.user_name}</strong>{' '}
@@ -626,6 +665,65 @@ export default function TicketDetail({
               ))}
             </>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NoteItem({
+  note,
+  userMap,
+  onReply,
+  isReplying = false,
+  isReply = false,
+}: {
+  note: Note
+  userMap: Map<string, User>
+  onReply?: () => void
+  isReplying?: boolean
+  isReply?: boolean
+}) {
+  const author = userMap.get(note.user_id)
+  const initials = note.user_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <div
+        style={{
+          width: isReply ? 20 : 24, height: isReply ? 20 : 24, borderRadius: '50%', flexShrink: 0,
+          background: author?.avatar_color ?? '#E85D26',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: isReply ? 8 : 9, color: '#fff', fontWeight: 600,
+        }}
+      >
+        {initials}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            background: isReplying ? '#EBF3FC' : 'var(--color-background-secondary)',
+            borderRadius: '0 7px 7px 7px', padding: '7px 9px',
+            border: isReplying ? '0.5px solid #B5D4F4' : 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <span style={{ fontSize: isReply ? 10 : 11, fontWeight: 500 }}>{note.user_name}</span>
+            <span style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{formatDate(note.created_at)}</span>
+            {onReply && (
+              <button
+                onClick={onReply}
+                style={{
+                  marginLeft: 'auto', fontSize: 10, background: 'none', border: 'none',
+                  cursor: 'pointer', color: isReplying ? '#0C447C' : 'var(--color-text-secondary)',
+                  fontWeight: isReplying ? 500 : 400, padding: 0,
+                }}
+              >
+                {isReplying ? '↩ Replying' : 'Reply'}
+              </button>
+            )}
+          </div>
+          <p style={{ fontSize: isReply ? 10 : 11, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{note.content}</p>
         </div>
       </div>
     </div>

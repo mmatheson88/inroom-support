@@ -11,6 +11,7 @@ export async function POST(request: Request) {
   const file = formData.get('file') as File | null
   const ticketId = formData.get('ticketId') as string
   const userId = formData.get('userId') as string
+  const description = (formData.get('description') as string | null) ?? ''
 
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
   if (!ALLOWED_TYPES.includes(file.type)) return NextResponse.json({ error: 'File type not allowed' }, { status: 400 })
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
       file_name: file.name,
       file_size: file.size,
       file_type: file.type,
+      description: description || null,
       uploaded_by: userId,
       created_at: new Date().toISOString(),
     })

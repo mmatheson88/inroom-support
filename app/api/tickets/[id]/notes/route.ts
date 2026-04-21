@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
-  const { content, userId, userName } = await request.json()
+  const { content, userId, userName, parentNoteId } = await request.json()
 
   const { data: note, error } = await supabase
     .from('notes')
@@ -13,6 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       user_id: userId,
       user_name: userName,
       content,
+      parent_note_id: parentNoteId ?? null,
       created_at: new Date().toISOString(),
     })
     .select()

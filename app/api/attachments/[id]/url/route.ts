@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -6,7 +6,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = await createClient()
+  // Use service client so signed URL generation works for all authenticated users
+  // regardless of who uploaded the file. Auth is enforced by proxy.ts.
+  const supabase = createServiceClient()
 
   const { data: attachment, error } = await supabase
     .from('attachments')
