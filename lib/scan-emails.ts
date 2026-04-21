@@ -101,7 +101,7 @@ export async function scanUserInbox(userId: string, deepScan = false) {
   const listRes = await gmail.users.messages.list({
     userId: 'me',
     q: query,
-    maxResults: 250,
+    maxResults: 50,
   })
 
   const messages = listRes.data.messages ?? []
@@ -141,6 +141,27 @@ export async function scanUserInbox(userId: string, deepScan = false) {
     }
     console.log(`[scan] body length=${body.length} chars`)
 
+    // Keyword pre-filter — skip Claude call if no keywords match
+    const keywords: string[] = settings?.keywords ?? ['issue', 'problem', 'broken', 'not working', 'outage', 'channel']
+    const searchText = `${subject} ${body}`.toLowerCase()
+    const matchedKeyword = keywords.find(kw => searchText.includes(kw.toLowerCase()))
+    if (!matchedKeyword) {
+      console.log(`[scan] SKIP — no keywords matched in subject/body (keywords: ${keywords.join(', ')})`)
+      await supabase.from('email_scans').insert({
+        user_id: userId,
+        gmail_message_id: msg.id,
+        scanned_at: new Date().toISOString(),
+        ticket_created: false,
+        ticket_id: null,
+        confidence_score: 0,
+        raw_summary: '',
+      })
+      skippedNotIssue++
+      continue
+    }
+    console.log(`[scan] keyword match: "${matchedKeyword}" — sending to Claude`)
+
+    await new Promise(r => setTimeout(r, 2000))
     const analysis = await analyzeEmail(subject, body, from)
     console.log(`[scan] claude response: isIssue=${analysis.isIssue} confidence=${analysis.confidence} type=${analysis.issueType} priority=${analysis.priority} title="${analysis.title}"`)
 
