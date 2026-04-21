@@ -13,7 +13,12 @@ export async function GET(request: Request) {
 
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/gmail.readonly'],
+    scope: [
+      'openid',
+      'email',
+      'profile',
+      'https://www.googleapis.com/auth/gmail.readonly',
+    ],
     state: userId ?? '',
     prompt: 'consent',
   })

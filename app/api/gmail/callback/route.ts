@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { encrypt } from '@/lib/crypto'
@@ -18,15 +18,21 @@ export async function GET(request: Request) {
     `${process.env.NEXT_PUBLIC_APP_URL}/api/gmail/callback`
   )
 
-  const { tokens } = await oauth2Client.getToken(code)
+  let tokens
+  try {
+    const result = await oauth2Client.getToken(code)
+    tokens = result.tokens
+  } catch {
+    return NextResponse.redirect(`${origin}/inbox-connect?error=token_exchange_failed`)
+  }
 
   if (!tokens.access_token) {
     return NextResponse.redirect(`${origin}/inbox-connect?error=no_token`)
   }
 
-  const supabase = await createClient()
+  const supabase = createServiceClient()
 
-  await supabase
+  const { error } = await supabase
     .from('users')
     .update({
       gmail_access_token: encrypt(tokens.access_token),
@@ -34,6 +40,10 @@ export async function GET(request: Request) {
       gmail_connected: true,
     })
     .eq('id', userId)
+
+  if (error) {
+    return NextResponse.redirect(`${origin}/inbox-connect?error=db_update_failed`)
+  }
 
   return NextResponse.redirect(`${origin}/inbox-connect?connected=true`)
 }
