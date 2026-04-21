@@ -59,22 +59,29 @@ export default function InboxConnectClient({
     else toast('Failed to save settings', 'error')
   }
 
-  async function triggerScan(deepScan = false) {
+  async function triggerScan(deepScan = false, clearHistory = false) {
     if (deepScan) setDeepScanning(true)
     else setScanning(true)
     const res = await fetch('/api/scan/trigger', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deepScan }),
+      body: JSON.stringify({ deepScan, clearHistory }),
     })
     if (deepScan) setDeepScanning(false)
     else setScanning(false)
     if (res.ok) {
-      toast(deepScan ? 'Deep scan started (30 days)' : 'Scan started')
+      toast(clearHistory ? 'Scan history cleared — deep scan running' : deepScan ? 'Deep scan started (30 days)' : 'Scan started')
       router.refresh()
     } else {
       toast('Scan failed', 'error')
     }
+  }
+
+  function handleDeepScan() {
+    const confirmed = window.confirm(
+      'This will clear all scan history for connected inboxes and re-scan the last 30 days.\n\nEmails that were previously scanned will be analyzed again. Continue?'
+    )
+    if (confirmed) triggerScan(true, true)
   }
 
   async function connectGmail(userId: string) {
@@ -279,7 +286,7 @@ export default function InboxConnectClient({
             {scanning ? 'Scanning...' : 'Scan Now'}
           </button>
           <button
-            onClick={() => triggerScan(true)}
+            onClick={handleDeepScan}
             disabled={scanning || deepScanning}
             style={{
               background: 'white',
