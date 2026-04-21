@@ -23,5 +23,5 @@ export async function GET(request: Request) {
     prompt: 'consent',
   })
 
-  return NextResponse.json({ url })
+  return NextResponse.redirect(url)
 }
