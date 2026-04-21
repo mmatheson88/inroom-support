@@ -2,9 +2,12 @@ import { createClient } from '@/lib/supabase/server'
 import Topbar from '@/components/topbar'
 import Link from 'next/link'
 import DashboardClient from './dashboard-client'
+import GmailConnectBanner from '@/components/gmail-connect-banner'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+
+  const { data: { user: authUser } } = await supabase.auth.getUser()
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -16,6 +19,7 @@ export default async function DashboardPage() {
     { count: autoDetected },
     { data: tickets },
     { data: users },
+    { data: profile },
   ] = await Promise.all([
     supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
     supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'in_progress'),
@@ -35,6 +39,11 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(100),
     supabase.from('users').select('id, name, avatar_color'),
+    supabase
+      .from('users')
+      .select('gmail_connected')
+      .eq('id', authUser?.id ?? '')
+      .single(),
   ])
 
   const stats = {
@@ -66,6 +75,9 @@ export default async function DashboardPage() {
       </Topbar>
 
       <div style={{ flex: 1, padding: 14, overflow: 'auto' }}>
+        {authUser && profile?.gmail_connected === false && (
+          <GmailConnectBanner userId={authUser.id} />
+        )}
         {/* Stat Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
           <StatCard
