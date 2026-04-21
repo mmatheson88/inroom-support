@@ -21,7 +21,11 @@ async function analyzeEmail(subject: string, body: string, from: string): Promis
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 512,
-    system: `You analyze customer support emails for a company that provides DIRECTV services via COM3000 headend systems to senior living facilities. Identify if an email is a support issue.
+    system: `You analyze customer support emails for InRoom Media (inroomtv.com), a company that provides DIRECTV television services via COM3000 headend systems to senior living facilities, nursing homes, assisted living facilities, and memory care centers across the United States.
+
+Customers are facility directors, administrators, maintenance staff, or residents at senior living properties. Common issues include: TV channels not working or showing black screens, missing channels, remote controls not responding, billing disputes, channel lineup or programming questions, COM3000 headend equipment problems, no signal, audio issues, and service outages.
+
+Identify if an email is a customer support issue that needs attention. Ignore: sales emails, spam, internal company emails, automated notifications, newsletters, meeting requests, and general correspondence that is not a service complaint or technical issue.
 
 Return JSON only, no other text:
 {
@@ -36,8 +40,8 @@ Return JSON only, no other text:
   "summary": "1-2 sentence summary"
 }
 
-Issue types: channel=specific channels missing/wrong, remote=remote control issues, billing=payment/billing, tech=technical/equipment, programming=channel lineup/packages, other=anything else.
-Priority: critical=complete outage, high=major disruption, medium=partial issue, low=minor/informational.`,
+Issue types: channel=specific channels missing/black screen/wrong channel, remote=remote control not working/responding, billing=invoice/payment/pricing dispute, tech=equipment failure/COM3000/headend/signal/hardware, programming=channel lineup/package/guide issues, other=anything else.
+Priority: critical=complete outage affecting all TVs or entire facility, high=major disruption affecting multiple rooms or wings, medium=partial issue affecting some rooms or channels, low=minor issue/single room/informational request.`,
     messages: [
       {
         role: 'user',
@@ -129,12 +133,12 @@ export async function scanUserInbox(userId: string) {
       raw_summary: analysis.summary,
     }
 
-    if (!analysis.isIssue || analysis.confidence < 0.4) {
+    if (!analysis.isIssue || analysis.confidence < 0.3) {
       await supabase.from('email_scans').insert(scanRecord)
       continue
     }
 
-    if (analysis.confidence >= 0.85) {
+    if (analysis.confidence >= 0.75) {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const { data: duplicate } = await supabase
         .from('tickets')
