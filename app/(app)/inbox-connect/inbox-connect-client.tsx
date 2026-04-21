@@ -45,6 +45,7 @@ export default function InboxConnectClient({
   const [savingSettings, setSavingSettings] = useState(false)
   const [newKeyword, setNewKeyword] = useState('')
   const [scanning, setScanning] = useState(false)
+  const [deepScanning, setDeepScanning] = useState(false)
 
   async function saveSettings(updated: typeof settings) {
     setSavingSettings(true)
@@ -58,12 +59,18 @@ export default function InboxConnectClient({
     else toast('Failed to save settings', 'error')
   }
 
-  async function triggerScan() {
-    setScanning(true)
-    const res = await fetch('/api/scan/trigger', { method: 'POST' })
-    setScanning(false)
+  async function triggerScan(deepScan = false) {
+    if (deepScan) setDeepScanning(true)
+    else setScanning(true)
+    const res = await fetch('/api/scan/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deepScan }),
+    })
+    if (deepScan) setDeepScanning(false)
+    else setScanning(false)
     if (res.ok) {
-      toast('Scan started')
+      toast(deepScan ? 'Deep scan started (30 days)' : 'Scan started')
       router.refresh()
     } else {
       toast('Scan failed', 'error')
@@ -255,8 +262,8 @@ export default function InboxConnectClient({
 
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '0.5px solid var(--color-border-tertiary)', display: 'flex', gap: 10, alignItems: 'center' }}>
           <button
-            onClick={triggerScan}
-            disabled={scanning}
+            onClick={() => triggerScan(false)}
+            disabled={scanning || deepScanning}
             style={{
               background: '#0C447C',
               color: '#fff',
@@ -265,11 +272,28 @@ export default function InboxConnectClient({
               padding: '7px 16px',
               fontSize: 11,
               fontWeight: 500,
-              cursor: scanning ? 'default' : 'pointer',
-              opacity: scanning ? 0.7 : 1,
+              cursor: (scanning || deepScanning) ? 'default' : 'pointer',
+              opacity: (scanning || deepScanning) ? 0.7 : 1,
             }}
           >
             {scanning ? 'Scanning...' : 'Scan Now'}
+          </button>
+          <button
+            onClick={() => triggerScan(true)}
+            disabled={scanning || deepScanning}
+            style={{
+              background: 'white',
+              color: '#0C447C',
+              border: '0.5px solid #0C447C',
+              borderRadius: 6,
+              padding: '7px 16px',
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: (scanning || deepScanning) ? 'default' : 'pointer',
+              opacity: (scanning || deepScanning) ? 0.7 : 1,
+            }}
+          >
+            {deepScanning ? 'Scanning...' : 'Deep Scan (30 days)'}
           </button>
           <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
             {scansTotal} total scans · {ticketsCreated} tickets created

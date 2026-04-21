@@ -58,7 +58,7 @@ Priority: critical=complete outage affecting all TVs or entire facility, high=ma
   }
 }
 
-export async function scanUserInbox(userId: string) {
+export async function scanUserInbox(userId: string, deepScan = false) {
   const supabase = createServiceClient()
 
   const { data: user } = await supabase
@@ -84,16 +84,18 @@ export async function scanUserInbox(userId: string) {
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-  const sinceDate = user.last_scan_at
-    ? new Date(user.last_scan_at)
-    : new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const sinceDate = deepScan
+    ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    : user.last_scan_at
+      ? new Date(user.last_scan_at)
+      : new Date(Date.now() - 24 * 60 * 60 * 1000)
 
   const query = `after:${Math.floor(sinceDate.getTime() / 1000)} -from:me`
 
   const listRes = await gmail.users.messages.list({
     userId: 'me',
     q: query,
-    maxResults: 20,
+    maxResults: 250,
   })
 
   const messages = listRes.data.messages ?? []
