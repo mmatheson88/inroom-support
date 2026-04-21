@@ -19,7 +19,7 @@ interface ScanResult {
 
 async function analyzeEmail(subject: string, body: string, from: string): Promise<ScanResult> {
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 512,
     system: `You analyze customer support emails for InRoom Media (inroomtv.com), a company that provides DIRECTV television services via COM3000 headend systems to senior living facilities, nursing homes, assisted living facilities, and memory care centers across the United States.
 
