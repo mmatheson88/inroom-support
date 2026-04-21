@@ -17,11 +17,18 @@ interface ScanResult {
   summary: string
 }
 
+const FALLBACK_RESULT: ScanResult = {
+  isIssue: false, confidence: 0, facility: '', contactName: '', contactEmail: '',
+  issueType: 'other', priority: 'low', title: '', summary: '',
+}
+
 async function analyzeEmail(subject: string, body: string, from: string): Promise<ScanResult> {
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 512,
-    system: `You analyze customer support emails for InRoom Media (inroomtv.com), a company that provides DIRECTV television services via COM3000 headend systems to senior living facilities, nursing homes, assisted living facilities, and memory care centers across the United States.
+  let rawText = ''
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 512,
+      system: `You analyze customer support emails for InRoom Media (inroomtv.com), a company that provides DIRECTV television services via COM3000 headend systems to senior living facilities, nursing homes, assisted living facilities, and memory care centers across the United States.
 
 Customers are facility directors, administrators, maintenance staff, or residents at senior living properties. Common issues include: TV channels not working or showing black screens, missing channels, remote controls not responding, billing disputes, channel lineup or programming questions, COM3000 headend equipment problems, no signal, audio issues, and service outages.
 
@@ -42,19 +49,25 @@ Return JSON only, no other text:
 
 Issue types: channel=specific channels missing/black screen/wrong channel, remote=remote control not working/responding, billing=invoice/payment/pricing dispute, tech=equipment failure/COM3000/headend/signal/hardware, programming=channel lineup/package/guide issues, other=anything else.
 Priority: critical=complete outage affecting all TVs or entire facility, high=major disruption affecting multiple rooms or wings, medium=partial issue affecting some rooms or channels, low=minor issue/single room/informational request.`,
-    messages: [
-      {
-        role: 'user',
-        content: `From: ${from}\nSubject: ${subject}\n\n${body.slice(0, 3000)}`,
-      },
-    ],
-  })
+      messages: [
+        {
+          role: 'user',
+          content: `From: ${from}\nSubject: ${subject}\n\n${body.slice(0, 3000)}`,
+        },
+      ],
+    })
 
-  const text = message.content[0].type === 'text' ? message.content[0].text : '{}'
-  try {
-    return JSON.parse(text.trim())
-  } catch {
-    return { isIssue: false, confidence: 0, facility: '', contactName: '', contactEmail: '', issueType: 'other', priority: 'low', title: '', summary: '' }
+    rawText = message.content[0].type === 'text' ? message.content[0].text : ''
+    console.log(`[claude] raw response: ${rawText}`)
+
+    // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+
+    return JSON.parse(cleaned)
+  } catch (err) {
+    console.error(`[claude] error — message: ${(err as Error).message}`)
+    if (rawText) console.error(`[claude] raw response was: ${rawText}`)
+    return FALLBACK_RESULT
   }
 }
 
