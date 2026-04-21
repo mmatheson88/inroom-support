@@ -12,10 +12,12 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/inbox-connect?error=missing_params`)
   }
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://inroom-support.vercel.app'
+
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    `${process.env.NEXT_PUBLIC_APP_URL}/api/gmail/callback`
+    `${appUrl}/api/gmail/callback`
   )
 
   let tokens

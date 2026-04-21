@@ -5,10 +5,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get('userId')
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://inroom-support.vercel.app'
+
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    `${process.env.NEXT_PUBLIC_APP_URL}/api/gmail/callback`
+    `${appUrl}/api/gmail/callback`
   )
 
   const url = oauth2Client.generateAuthUrl({
