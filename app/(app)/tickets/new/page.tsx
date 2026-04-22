@@ -6,7 +6,7 @@ export default async function NewTicketPage() {
 
   const [{ data: users }, { data: facilities }, { data: { user } }] = await Promise.all([
     supabase.from('users').select('id, name, avatar_color'),
-    supabase.from('facilities').select('id, name, location, contact_name, contact_email').order('name'),
+    supabase.from('facilities').select('id, name, location, address, contact_name, contact_email').order('name'),
     supabase.auth.getUser(),
   ])
 

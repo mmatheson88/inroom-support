@@ -563,7 +563,18 @@ export default function TicketDetail({
           }}
         >
           <SidebarField label="Facility">
-            <div style={{ fontSize: 12 }}>{ticket.facility_name}</div>
+            {ticket.facility_id ? (
+              <a
+                href={`/facilities/${ticket.facility_id}`}
+                style={{ fontSize: 12, color: '#0C447C', textDecoration: 'none', fontWeight: 500 }}
+                onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+              >
+                {ticket.facility_name}
+              </a>
+            ) : (
+              <div style={{ fontSize: 12 }}>{ticket.facility_name}</div>
+            )}
             {ticket.facility_location && (
               <div style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{ticket.facility_location}</div>
             )}

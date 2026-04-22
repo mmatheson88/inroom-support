@@ -176,6 +176,18 @@ export default function Sidebar({ user, counts }: SidebarProps) {
           }
         />
         <NavItem
+          href="/facilities"
+          active={pathname === '/facilities' || pathname.startsWith('/facilities/')}
+          label="Facilities"
+          icon={
+            <svg viewBox="0 0 13 13" fill="none" width="13" height="13">
+              <rect x="1" y="5" width="11" height="7" rx="1" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M4 12V9h2v3M7 12V9h2v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M1 5l5.5-4 5.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }
+        />
+        <NavItem
           href="/tickets"
           active={isAllTickets}
           label="All Tickets"

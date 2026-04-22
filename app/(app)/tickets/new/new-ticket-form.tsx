@@ -6,7 +6,7 @@ import { priority as priorityTokens } from '@/lib/tokens'
 import { useToast } from '@/components/toast'
 
 interface User { id: string; name: string; avatar_color: string }
-interface Facility { id: string; name: string; location: string; contact_name: string; contact_email: string }
+interface Facility { id: string; name: string; location: string | null; address: string | null; contact_name: string | null; contact_email: string | null }
 
 const SOURCES = ['manual', 'phone', 'email', 'in_person'] as const
 const TYPES = ['channel', 'remote', 'billing', 'tech', 'programming', 'other'] as const
@@ -219,7 +219,9 @@ export default function NewTicketForm({
                       onMouseLeave={e => { e.currentTarget.style.background = 'white' }}
                     >
                       <div style={{ fontWeight: 500 }}>{f.name}</div>
-                      {f.location && <div style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{f.location}</div>}
+                      {(f.location || f.address) && (
+                        <div style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{f.location || f.address}</div>
+                      )}
                     </div>
                   ))}
                 </div>

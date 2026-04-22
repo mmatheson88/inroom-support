@@ -212,11 +212,28 @@ export async function scanUserInbox(userId: string, deepScan = false) {
         console.log(`[scan] QUEUE — confidence=${analysis.confidence} >= 0.75 but auto_create is disabled`)
       } else {
         console.log(`[scan] AUTO-CREATE ticket — confidence=${analysis.confidence} facility="${analysis.facility}"`)
+
+        // Try to match facility name to a real facility record
+        let facilityId: string | null = null
+        if (analysis.facility) {
+          const { data: matchedFacility } = await supabase
+            .from('facilities')
+            .select('id')
+            .ilike('name', `%${analysis.facility}%`)
+            .limit(1)
+            .maybeSingle()
+          if (matchedFacility) {
+            facilityId = matchedFacility.id
+            console.log(`[scan] matched facility_id=${facilityId} for name="${analysis.facility}"`)
+          }
+        }
+
         const { data: ticket, error: ticketError } = await supabase
           .from('tickets')
           .insert({
             title: analysis.title,
             description: analysis.summary,
+            facility_id: facilityId,
             facility_name: analysis.facility,
             contact_name: analysis.contactName,
             contact_email: analysis.contactEmail || from,
