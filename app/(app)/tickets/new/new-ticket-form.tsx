@@ -56,9 +56,9 @@ export default function NewTicketForm({
       ...prev,
       facility_id: f.id,
       facility_name: f.name,
-      facility_location: f.location,
-      contact_name: prev.contact_name || f.contact_name,
-      contact_email: prev.contact_email || f.contact_email,
+      facility_location: f.location ?? '',
+      contact_name: prev.contact_name || f.contact_name ?? '',
+      contact_email: prev.contact_email || f.contact_email ?? '',
     }))
     setFacilitySearch(f.name)
     setShowFacilityDropdown(false)
