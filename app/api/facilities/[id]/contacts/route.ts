@@ -24,6 +24,20 @@ export async function POST(
   const { id } = await params
   const supabase = await createClient()
   const body = await request.json()
+
+  // Skip duplicate if same email already exists for this facility
+  if (body.email) {
+    const { data: existing } = await supabase
+      .from('facility_contacts')
+      .select('id')
+      .eq('facility_id', id)
+      .eq('email', body.email)
+      .maybeSingle()
+    if (existing) {
+      return NextResponse.json({ error: 'A contact with this email already exists for this facility' }, { status: 409 })
+    }
+  }
+
   const { data, error } = await supabase
     .from('facility_contacts')
     .insert({ ...body, facility_id: id, created_at: new Date().toISOString() })

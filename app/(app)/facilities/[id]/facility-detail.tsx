@@ -36,12 +36,13 @@ interface Contact {
   facility_id: string
   name: string
   email: string | null
+  phone: string | null
   role: string | null
   is_primary: boolean
   created_at: string
 }
 
-const emptyContactForm = { name: '', email: '', role: '', is_primary: false }
+const emptyContactForm = { name: '', email: '', phone: '', role: '', is_primary: false }
 
 export default function FacilityDetail({
   facility: initialFacility,
@@ -296,7 +297,7 @@ export default function FacilityDetail({
                 style={{
                   padding: '12px', borderBottom: '0.5px solid var(--color-border-primary)',
                   background: 'var(--color-background-secondary)',
-                  display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto auto', gap: 8, alignItems: 'end',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto', gap: 8, alignItems: 'end',
                 }}
               >
                 <div>
@@ -306,6 +307,10 @@ export default function FacilityDetail({
                 <div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 3 }}>Email</div>
                   <input type="email" value={contactForm.email} onChange={e => setContactForm(p => ({ ...p, email: e.target.value }))} placeholder="email@example.com" style={fieldStyle} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 3 }}>Phone</div>
+                  <input type="tel" value={contactForm.phone} onChange={e => setContactForm(p => ({ ...p, phone: e.target.value }))} placeholder="(555) 000-0000" style={fieldStyle} />
                 </div>
                 <div>
                   <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 3 }}>Role</div>
@@ -362,9 +367,10 @@ export default function FacilityDetail({
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                    {c.role && <span style={{ marginRight: 8 }}>{c.role}</span>}
+                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {c.role && <span>{c.role}</span>}
                     {c.email && <a href={`mailto:${c.email}`} style={{ color: '#0C447C' }}>{c.email}</a>}
+                    {c.phone && <a href={`tel:${c.phone}`} style={{ color: 'var(--color-text-secondary)' }}>{c.phone}</a>}
                   </div>
                 </div>
                 <button

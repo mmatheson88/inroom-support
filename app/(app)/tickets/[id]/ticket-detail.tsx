@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PriorityBadge, StatusBadge, TypeBadge } from '@/components/badge'
 import { daysOpen as daysOpenColor, formatDate, status as statusTokens } from '@/lib/tokens'
@@ -10,11 +10,12 @@ interface Ticket {
   id: string
   title: string
   description: string
-  facility_id: string
+  facility_id: string | null
   facility_name: string
   facility_location: string
   contact_name: string
   contact_email: string
+  contact_phone: string | null
   type: string
   priority: string
   status: string
@@ -24,6 +25,12 @@ interface Ticket {
   updated_at: string
   resolved_at: string | null
   created_by: string
+}
+
+interface FacilityOption {
+  id: string
+  name: string
+  address: string | null
 }
 
 interface Note {
@@ -110,6 +117,24 @@ export default function TicketDetail({
   const [showAttachForm, setShowAttachForm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Facility linking
+  const [allFacilities, setAllFacilities] = useState<FacilityOption[]>([])
+  const [facilitySearch, setFacilitySearch] = useState('')
+  const [showFacilityDropdown, setShowFacilityDropdown] = useState(false)
+  const [linkingFacility, setLinkingFacility] = useState(false)
+  const [savingContact, setSavingContact] = useState(false)
+  const facilityDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (facilityDropdownRef.current && !facilityDropdownRef.current.contains(e.target as Node)) {
+        setShowFacilityDropdown(false)
+      }
+    }
+    if (showFacilityDropdown) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showFacilityDropdown])
+
   const days = getDaysOpen(ticket)
   const userMap = new Map(users.map(u => [u.id, u]))
 
@@ -117,6 +142,61 @@ export default function TicketDetail({
   const topLevelNotes = notes.filter(n => !n.parent_note_id)
   const repliesFor = (noteId: string) => notes.filter(n => n.parent_note_id === noteId)
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+  async function openFacilitySearch() {
+    if (allFacilities.length === 0) {
+      const res = await fetch('/api/facilities')
+      if (res.ok) {
+        const { facilities } = await res.json()
+        setAllFacilities(facilities)
+      }
+    }
+    setFacilitySearch('')
+    setShowFacilityDropdown(true)
+  }
+
+  async function linkFacility(f: FacilityOption) {
+    setShowFacilityDropdown(false)
+    setLinkingFacility(true)
+    const res = await fetch(`/api/tickets/${ticket.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facility_id: f.id, facility_name: f.name, userId: currentUserId, userName: currentUserName }),
+    })
+    setLinkingFacility(false)
+    if (res.ok) {
+      const updated = await res.json()
+      setTicket(updated.ticket)
+      setActivity(prev => [updated.activity, ...prev])
+      toast(`Linked to ${f.name}`)
+    } else {
+      toast('Failed to link facility', 'error')
+    }
+  }
+
+  async function saveContactToFacility() {
+    if (!ticket.facility_id) return
+    setSavingContact(true)
+    // Check for duplicate by email first
+    const res = await fetch(`/api/facilities/${ticket.facility_id}/contacts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: ticket.contact_name,
+        email: ticket.contact_email || null,
+        phone: ticket.contact_phone || null,
+        role: null,
+        is_primary: false,
+      }),
+    })
+    setSavingContact(false)
+    if (res.ok) {
+      toast('Contact saved to facility')
+    } else {
+      const err = await res.json()
+      toast(err.error ?? 'Failed to save contact', 'error')
+    }
+  }
 
   async function updateField(field: string, value: string) {
     const res = await fetch(`/api/tickets/${ticket.id}`, {
@@ -573,19 +653,89 @@ export default function TicketDetail({
                 {ticket.facility_name}
               </a>
             ) : (
-              <div style={{ fontSize: 12 }}>{ticket.facility_name}</div>
+              <>
+                <div style={{ fontSize: 12, marginBottom: 5 }}>{ticket.facility_name}</div>
+                <div style={{ position: 'relative' }} ref={facilityDropdownRef}>
+                  <button
+                    onClick={openFacilitySearch}
+                    disabled={linkingFacility}
+                    style={{
+                      fontSize: 10, border: '0.5px solid var(--color-border-primary)', borderRadius: 4,
+                      padding: '3px 7px', background: 'none', cursor: 'pointer',
+                      color: '#0C447C', opacity: linkingFacility ? 0.6 : 1,
+                    }}
+                  >
+                    {linkingFacility ? 'Linking...' : '+ Link to facility'}
+                  </button>
+                  {showFacilityDropdown && (
+                    <div
+                      style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0,
+                        background: 'white', border: '0.5px solid var(--color-border-primary)',
+                        borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        zIndex: 200, marginTop: 2, maxHeight: 200, overflowY: 'auto',
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        value={facilitySearch}
+                        onChange={e => setFacilitySearch(e.target.value)}
+                        placeholder="Search facilities..."
+                        style={{
+                          width: '100%', fontSize: 11, border: 'none', borderBottom: '0.5px solid var(--color-border-tertiary)',
+                          padding: '6px 8px', outline: 'none', boxSizing: 'border-box',
+                        }}
+                      />
+                      {allFacilities
+                        .filter(f => f.name.toLowerCase().includes(facilitySearch.toLowerCase()))
+                        .map(f => (
+                          <div
+                            key={f.id}
+                            onMouseDown={() => linkFacility(f)}
+                            style={{ padding: '7px 8px', fontSize: 11, cursor: 'pointer' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-background-secondary)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            <div style={{ fontWeight: 500 }}>{f.name}</div>
+                            {f.address && <div style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{f.address}</div>}
+                          </div>
+                        ))}
+                      {allFacilities.filter(f => f.name.toLowerCase().includes(facilitySearch.toLowerCase())).length === 0 && (
+                        <div style={{ padding: '10px 8px', fontSize: 11, color: 'var(--color-text-muted)' }}>No matches</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
             {ticket.facility_location && (
-              <div style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{ticket.facility_location}</div>
+              <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 3 }}>{ticket.facility_location}</div>
             )}
           </SidebarField>
 
           <SidebarDivider />
 
           <SidebarField label="Contact">
-            {ticket.contact_name && <div style={{ fontSize: 12 }}>{ticket.contact_name}</div>}
+            {ticket.contact_name && <div style={{ fontSize: 12, marginBottom: 2 }}>{ticket.contact_name}</div>}
             {ticket.contact_email && (
-              <a href={`mailto:${ticket.contact_email}`} style={{ fontSize: 11, color: '#0C447C' }}>{ticket.contact_email}</a>
+              <a href={`mailto:${ticket.contact_email}`} style={{ fontSize: 11, color: '#0C447C', display: 'block', marginBottom: 2 }}>{ticket.contact_email}</a>
+            )}
+            {ticket.contact_phone && (
+              <a href={`tel:${ticket.contact_phone}`} style={{ fontSize: 11, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 2 }}>{ticket.contact_phone}</a>
+            )}
+            {ticket.facility_id && (ticket.contact_name || ticket.contact_email) && (
+              <button
+                onClick={saveContactToFacility}
+                disabled={savingContact}
+                style={{
+                  marginTop: 5, fontSize: 10, border: '0.5px solid var(--color-border-primary)',
+                  borderRadius: 4, padding: '3px 7px', background: 'none',
+                  cursor: savingContact ? 'default' : 'pointer',
+                  color: '#1D9E75', opacity: savingContact ? 0.6 : 1,
+                }}
+              >
+                {savingContact ? 'Saving...' : '↑ Save contact to facility'}
+              </button>
             )}
           </SidebarField>
 

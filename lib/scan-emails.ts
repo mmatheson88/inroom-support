@@ -11,6 +11,7 @@ interface ScanResult {
   facility: string
   contactName: string
   contactEmail: string
+  contactPhone: string
   issueType: string
   priority: string
   title: string
@@ -19,7 +20,7 @@ interface ScanResult {
 
 const FALLBACK_RESULT: ScanResult = {
   isIssue: false, confidence: 0, facility: '', contactName: '', contactEmail: '',
-  issueType: 'other', priority: 'low', title: '', summary: '',
+  contactPhone: '', issueType: 'other', priority: 'low', title: '', summary: '',
 }
 
 async function analyzeEmail(subject: string, body: string, from: string): Promise<ScanResult> {
@@ -41,6 +42,7 @@ Return JSON only, no other text:
   "facility": "facility name or empty string",
   "contactName": "sender name or empty",
   "contactEmail": "sender email or empty",
+  "contactPhone": "phone number from email signature or empty string",
   "issueType": "channel|remote|billing|tech|programming|other",
   "priority": "critical|high|medium|low",
   "title": "brief issue title under 80 chars",
@@ -237,6 +239,7 @@ export async function scanUserInbox(userId: string, deepScan = false) {
             facility_name: analysis.facility,
             contact_name: analysis.contactName,
             contact_email: analysis.contactEmail || from,
+            contact_phone: analysis.contactPhone || null,
             type: analysis.issueType,
             priority: analysis.priority,
             source: 'auto_email',
