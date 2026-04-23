@@ -209,6 +209,9 @@ export default function TicketDetail({
       setTicket(updated.ticket)
       setActivity(prev => [updated.activity, ...prev])
       toast(`${field.replace('_', ' ')} updated`)
+    } else {
+      const err = await res.json().catch(() => ({}))
+      toast(err.error ?? `Failed to update ${field.replace('_', ' ')}`, 'error')
     }
   }
 

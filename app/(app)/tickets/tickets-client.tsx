@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PriorityBadge, StatusBadge, TypeBadge } from '@/components/badge'
 import { daysOpen as daysOpenColor, formatDate } from '@/lib/tokens'
@@ -49,6 +49,17 @@ export default function TicketsClient({
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState(initialSource ?? '')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  // Sync local filter state when the URL-driven props change (filter-to-filter navigation)
+  useEffect(() => {
+    setStatusFilter(initialStatus ?? '')
+    setSourceFilter(initialSource ?? '')
+    setSearch('')
+    setTypeFilter('')
+    setPriorityFilter('')
+    setAssigneeFilter('')
+    setSelected(new Set())
+  }, [initialStatus, initialSource])
 
   const userMap = useMemo(() => new Map(users.map(u => [u.id, u])), [users])
 
