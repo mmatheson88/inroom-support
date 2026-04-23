@@ -53,6 +53,7 @@ export default async function TicketsPage({
 
       <div style={{ flex: 1, padding: 14, overflow: 'auto' }}>
         <TicketsClient
+          key={`${params.status ?? ''}-${params.source ?? ''}-${params.assigned ?? ''}`}
           tickets={tickets ?? []}
           users={users ?? []}
           initialStatus={params.status}
