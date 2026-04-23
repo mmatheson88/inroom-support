@@ -24,6 +24,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // When linking a facility, bulk-apply to other tickets with the same contact_email and no facility_id
+  if (fields.facility_id && ticket.contact_email) {
+    await supabase
+      .from('tickets')
+      .update({ facility_id: fields.facility_id, updated_at: new Date().toISOString() })
+      .eq('contact_email', ticket.contact_email)
+      .is('facility_id', null)
+      .neq('id', id)
+  }
+
   const changedField = Object.keys(fields)[0]
   const { data: activity } = await supabase
     .from('activity_log')

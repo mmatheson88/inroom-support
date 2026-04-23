@@ -215,20 +215,42 @@ export async function scanUserInbox(userId: string, deepScan = false) {
       } else {
         console.log(`[scan] AUTO-CREATE ticket — confidence=${analysis.confidence} facility="${analysis.facility}"`)
 
-        // Try to match facility name to a real facility record
+        const senderEmail = analysis.contactEmail || from
         let facilityId: string | null = null
-        if (analysis.facility) {
-          const { data: matchedFacility } = await supabase
+        let facilityMatchSource = ''
+
+        // Step 1: Check facility_contacts for sender email (most reliable)
+        if (senderEmail) {
+          const emailPart = senderEmail.match(/<(.+)>/)?.[1] ?? senderEmail
+          const { data: contactMatch } = await supabase
+            .from('facility_contacts')
+            .select('facility_id')
+            .ilike('email', emailPart)
+            .limit(1)
+            .maybeSingle()
+          if (contactMatch) {
+            facilityId = contactMatch.facility_id
+            facilityMatchSource = 'contact_email'
+            console.log(`[scan] matched facility_id=${facilityId} via contact email="${emailPart}"`)
+          }
+        }
+
+        // Step 2: Fuzzy name match if no contact match
+        if (!facilityId && analysis.facility) {
+          const { data: nameMatch } = await supabase
             .from('facilities')
             .select('id')
             .ilike('name', `%${analysis.facility}%`)
             .limit(1)
             .maybeSingle()
-          if (matchedFacility) {
-            facilityId = matchedFacility.id
-            console.log(`[scan] matched facility_id=${facilityId} for name="${analysis.facility}"`)
+          if (nameMatch) {
+            facilityId = nameMatch.id
+            facilityMatchSource = 'name_match'
+            console.log(`[scan] matched facility_id=${facilityId} via name="${analysis.facility}"`)
           }
         }
+
+        if (!facilityId) console.log(`[scan] no facility match found`)
 
         const { data: ticket, error: ticketError } = await supabase
           .from('tickets')
@@ -238,7 +260,7 @@ export async function scanUserInbox(userId: string, deepScan = false) {
             facility_id: facilityId,
             facility_name: analysis.facility,
             contact_name: analysis.contactName,
-            contact_email: analysis.contactEmail || from,
+            contact_email: senderEmail,
             contact_phone: analysis.contactPhone || null,
             type: analysis.issueType,
             priority: analysis.priority,
@@ -259,6 +281,29 @@ export async function scanUserInbox(userId: string, deepScan = false) {
           console.log(`[scan] ticket created id=${ticket.id}`)
           scanRecord.ticket_created = true
           scanRecord.ticket_id = ticket.id
+
+          // Step 3: Auto-save contact to facility if matched via contact lookup and contact doesn't already exist
+          if (facilityId && facilityMatchSource === 'contact_email' && analysis.contactName) {
+            const emailPart = senderEmail.match(/<(.+)>/)?.[1] ?? senderEmail
+            const { data: existingContact } = await supabase
+              .from('facility_contacts')
+              .select('id')
+              .eq('facility_id', facilityId)
+              .ilike('email', emailPart)
+              .maybeSingle()
+            if (!existingContact) {
+              await supabase.from('facility_contacts').insert({
+                facility_id: facilityId,
+                name: analysis.contactName,
+                email: emailPart,
+                phone: analysis.contactPhone || null,
+                is_primary: false,
+                created_at: new Date().toISOString(),
+              })
+              console.log(`[scan] auto-saved contact "${analysis.contactName}" to facility_id=${facilityId}`)
+            }
+          }
+
           await supabase.from('email_scans').insert(scanRecord)
           await supabase.from('users').update({ last_scan_at: new Date().toISOString() }).eq('id', userId)
           ticketsCreated++
